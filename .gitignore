@@ -1,16 +1,26 @@
 # Node
 node_modules/
-
-# Python / venv
-.venv/
-venv/
-
-# Jaclang
 __jac_gen__/
+
+# Build outputs
+build/
+dist/
 
 # Environment variables
 .env
+.venv/
 .env.*
+.env.sample
+
+# Jac / runtime
+__jac_gen__/
+*.session
+*.session.*
+*.json
+
+# Python
+.venv/
+__pycache__/
 
 # VS Code
 .vscode/
@@ -18,4 +28,3 @@ __jac_gen__/
 # OS junk
 .DS_Store
 Thumbs.db
-

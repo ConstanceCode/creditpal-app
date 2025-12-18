@@ -1,7 +1,7 @@
 # Pages
 import from react {useState, useEffect}
 import from react_router {initRouter, navigate}
-import from '@jac-client/auth' {jacLogin, jacRegister, jacIsLoggedIn, jacLogout}
+import from `@jac-client/auth' {jacLogin, jacRegister, jacIsLoggedIn, jacLogout}
 import from lodash {*as _}
 import from antd {Button, Card, Input, Form, Select, DatePicker, Alert}
 include '@jac-client/utils'
@@ -117,4 +117,5 @@ def app() -> any {
         <div>
             <TopicInput />
         </div>
+
 }
