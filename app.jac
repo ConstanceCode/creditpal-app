@@ -5,6 +5,7 @@ import utils
 glob env_loaded = load_dotenv(); #global instance to load my environment in(for my different nodes & walkers)
 
 #BE Code 
+
 node User{
     has name: str;
     has email: str;
@@ -16,18 +17,23 @@ node User{
             "email": "johndoe@example.com"
         }
     }
+    
 }
 node Topics{
+    has state: dict[];
     has title: str;
     has description: str;
  
-    def AddTopic(title: str, description: str) -> Topic{
+    def add_topic(title: str, description: str) -> Topic{
         new_topic = Topic(
             title = self.title,
             description = self.description
+
         );
         
     }
+    here.state["added_topic"]= def add_topic(here.state);
+
 }
 
 node Articles{
@@ -43,7 +49,7 @@ node Articles{
             return false;
         }
     }
-
+    print(Articles.add_article());
 }
 
 edge user_interests{
@@ -54,46 +60,53 @@ edge credibility{
     has score: float;
 }
 
+#walkers
+
 walker fetch_articles{
-    has articles: list(Articles);
-    has recommended: list(Articles);
+    has state: dict[];
     
     can scrape_articles with User entry{
         def article_scrapper(user: User, topics: Topics) -> list(Articles) by llm{
                 articles.append(article);
             }
-            return articles;
-            
+            return articles;            
         }
+        self.state(articles) = article_scrapper(self.state);
+        print(f"Fetched Articles: {self.state.articles}");
+}
+
+walker recommendations(fetch_articles){
     can recommend_articles with Topics entry{
-        def article_recommender(user: User, articles: list(Articles)) -> list(Articles) by llm{
+        def article_reccommender(user: User, articles: list(Articles)) -> list(Articles) by llm{
                 recommended.append(article);
             };
             return recommended;
         };
+        self.state(recommended) = article_reccommender(self.state)
+        print(f"Recommended Articles: {self.state.recommended}");
 }
 
-walker check_credibility with Articles entry{
-    has credibility_score: float;
+walker check_credibility (fetch_articles) {
+    has score_credibility: float;
 
-    def evaluate_credibility(article: Articles) -> float by llm{
+    can determine_credibilty with Articles entry{    
+        def evaluate_credibility(article: Articles) -> float by llm{
             return score;
         };
-} 
+        self.score_credibility = evaluate_credibility(self.state);
+        return self.score_credibility;
+    } 
+}
 
 with entry{
 
     root ++> User;
     User ++> Topics ++> Articles;
-    User :++> user_interests :++> Topics;
+    User +>: user_interests :+> Topics;
 
-    fetched_articles = scrape_articles();
-    print(f"Fetched Articles: {fetched_articles}");
-    recommended_articles = recommend_articles(fetched_articles);
-    print(f"Recommended Articles: {recommended_articles}");
 
-    credibility_score = evaluate_credibility();
-    print(f"Credibility Score: {credibility_score}");
+    curator = fetch_articles();
+    root spawn curator;
 
 
 }
