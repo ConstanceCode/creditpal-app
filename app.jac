@@ -1,16 +1,17 @@
 
 import from byllm.lib {Model}
 import os;
+import json;
+import re;
 import from tools.news_fetchers {
     NewsAPIFetcher,
     GNewsAPIFetcher,
     RSSFeedFetcher
 }
 
-
 # LLM Setup with fallback
-glob llm_primary = Model(model_name="gemini/gemini-2.0-flash-exp");
-glob llm_fallback = Model(model_name="groq/llama-3.1-70b-versatile");
+glob llm_primary = Model(model_name="groq/llama-3.3-70b-versatile");
+glob llm_fallback = Model(model_name="gemini/gemini-2.0-flash-exp");
 glob llm = llm_primary;
 glob using_fallback = False;
 
@@ -21,15 +22,15 @@ glob rss_fetcher = RSSFeedFetcher();
 
 # ============ BYLLM FUNCTIONS ============
 
-def analyze_article(article: obj, source: obj) -> dict by llm();
-def detect_bias(content: str) -> dict by llm();
-def detect_polarization(content: str) -> float by llm();
-def extract_claims(content: str) -> list by llm();
-def verify_claims(claims: list[str], all_articles: list) -> dict by llm();
-def summarize_article(content: str) -> str by llm();
-def extract_entities(content: str) -> dict by llm();
-def calculate_relevance(article: obj, user_interests: list[str]) -> float by llm();
-def recommend_articles(articles: list, user_profile: obj) -> list by llm();
+def analyze_article(article: any, source: any) -> str by llm(incl_info=("Analyze this article for credibility. Consider source reputation, writing quality, fact-checking. Return ONLY a JSON string with this exact structure: {\"credibility_score\": <number 0-100>, \"reasoning\": \"<explanation>\"}"));
+
+def detect_bias(content: str) -> str by llm(incl_info=("Detect political bias in this content. Analyze word choice, framing, balance. Return ONLY a JSON string: {\"bias_score\": <number -100 to 100>, \"explanation\": \"<text>\"}"));
+
+def detect_polarization(content: str) -> str by llm(incl_info=("Measure how polarizing this language is. Look for emotional language, us vs them framing. Return ONLY a number between 0-100 as a string."));
+
+def extract_claims(content: str) -> str by llm(incl_info=("Extract factual claims from this content. Return ONLY a JSON array of strings: [\"claim 1\", \"claim 2\", \"claim 3\"]"));
+
+def summarize_article(content: str) -> str by llm(incl_info=("Summarize this article in 60-80 words, 3-4 sentences. Focus on key facts, maintain neutral tone."));
 
 # ============ NODES ============
 
@@ -247,6 +248,11 @@ walker AnalyzeCredibilityWalker {
     }
     
     can analyze with Article entry {
+        import time;
+        import re;
+        
+        time.sleep(2);  # Rate limit protection
+        
         title_short = here.title[:60] + "..." if len(here.title) > 60 else here.title;
         print(f"Analyzing: {title_short}");
         
@@ -262,33 +268,97 @@ walker AnalyzeCredibilityWalker {
         
         while retry_count < self.max_retries and not success {
             try {
-                cred_result = analyze_article(here, source);
-                here.credibility_score = cred_result.get("credibility_score", 50.0);
+                # Truncate content to avoid token limits
+                content_truncated = here.content[:3000] if len(here.content) > 3000 else here.content;
                 
-                bias_result = detect_bias(here.content);
-                here.bias_score = bias_result.get("bias_score", 0.0);
+                # Helper function to clean LLM response
+                def clean_json_response(response_str: str) -> str {
+                    # Remove markdown code blocks
+                    cleaned = response_str.replace("```json", "").replace("```python", "").replace("```", "");
+                    # Remove any leading/trailing whitespace
+                    cleaned = cleaned.strip();
+                    # Replace single quotes with double quotes for valid JSON
+                    cleaned = cleaned.replace("'", '"');
+                    return cleaned;
+                }
                 
-                here.polarization_score = detect_polarization(here.content);
-                here.claims = extract_claims(here.content);
+                # Get credibility analysis
+                cred_result_str = analyze_article(here.title + " " + content_truncated[:1000], source);
+                cred_result_str = clean_json_response(cred_result_str);
                 
+                try {
+                    cred_result = json.loads(cred_result_str);
+                    here.credibility_score = float(cred_result.get("credibility_score", 50.0));
+                } except Exception as parse_err {
+                    # Extract number from string
+                    numbers = re.findall(r'\d+', cred_result_str);
+                    here.credibility_score = float(numbers[0]) if numbers else 50.0;
+                }
+                
+                # Get bias analysis  
+                bias_result_str = detect_bias(content_truncated[:2000]);
+                bias_result_str = clean_json_response(bias_result_str);
+                
+                try {
+                    bias_result = json.loads(bias_result_str);
+                    here.bias_score = float(bias_result.get("bias_score", 0.0));
+                } except Exception as parse_err {
+                    numbers = re.findall(r'-?\d+\.?\d*', bias_result_str);
+                    here.bias_score = float(numbers[0]) if numbers else 0.0;
+                }
+                
+                # Get polarization score
+                polar_str = detect_polarization(content_truncated[:2000]);
+                polar_str = polar_str.strip();
+                
+                try {
+                    here.polarization_score = float(polar_str);
+                } except Exception {
+                    numbers = re.findall(r'\d+\.?\d*', polar_str);
+                    here.polarization_score = float(numbers[0]) if numbers else 0.0;
+                }
+                
+                # Extract claims
+                claims_str = extract_claims(content_truncated[:2000]);
+                claims_str = clean_json_response(claims_str);
+                
+                try {
+                    here.claims = json.loads(claims_str);
+                } except Exception {
+                    here.claims = [];
+                }
+                
+                # Generate summary
+                here.summary = summarize_article(content_truncated[:2000]);
+                if len(here.summary) > 500 {
+                    here.summary = here.summary[:500];
+                }
+                
+                # Update source credibility
                 source.update_credibility(here.credibility_score);
                 
+                success = True;
+                
                 print(
-                    "   Credibility: " + str(here.credibility_score) +
-                    "/100 | Bias: " + str(here.bias_score) +
-                    " | Polarization: " + str(here.polarization_score) + "/100"
+                    "   ✅ Credibility: " + str(int(here.credibility_score)) +
+                    "/100 | Bias: " + str(int(here.bias_score)) +
+                    " | Polarization: " + str(int(here.polarization_score)) + "/100"
                 );
             }
             except Exception as e {
                 retry_count += 1;
-                print(f"Attempt {retry_count} failed: {str(e)[:50]}");
+                print(f"❌ Attempt {retry_count} failed: {str(e)[:200]}");
                 
                 if retry_count == 1 and not using_fallback {
-                    print("\nSwitching to Groq fallback...");
+                    print("\n🔄 Switching to Gemini fallback...");
                     llm = llm_fallback;
                     using_fallback = True;
                 } elif retry_count >= self.max_retries {
-                    print(f"Analysis failed after {self.max_retries} attempts");
+                    print(f"⚠️  Analysis failed after {self.max_retries} attempts");
+                    # Set default values
+                    here.credibility_score = 50.0;
+                    here.bias_score = 0.0;
+                    here.polarization_score = 0.0;
                 }
             }
         }
@@ -427,11 +497,46 @@ walker UpdateUserInterestsWalker {
         # --- Update read history ---
         user.record_read(self.article_id);
         article.read_count += 1;
+        print(f"Updated interests for {self.user_id}");
+        report {"updated": True};
           # --- Find topics this article belongs to ---
         topics = [article <-- Topic];}
+}
+walker FetchNewsAPI {
+    has topic: str;
+
+    can fetch with `root entry {
+        fetcher = FetchNewsWalker(topic=self.topic, max_articles=10);
+        root spawn fetcher;
+        report {"status": "fetch_started"};
+    }
+}
+walker GetArticlesByTopicWalker {
+    has topic_name: str;
+    
+    can get_by_topic with `root entry {
+        all_nodes = [-->];
+        
+        # Find the topic node
+        topic_node = None;
+        for node in all_nodes {
+            if isinstance(node, Topic) and node.name == self.topic_name {
+                topic_node = node;
+                break;
+            }
         }
-
-
+        
+        if not topic_node {
+            report {"articles": [], "message": "Topic not found"};
+            return;
+        }
+        
+        # Get articles connected to this topic
+        articles = [topic_node --> Article];
+        
+        report {"articles": articles, "topic": self.topic_name};
+    }
+}
 walker GetAllArticlesWalker {
     can get_articles with `root entry {
         all_nodes = [-->];
@@ -444,43 +549,51 @@ walker GetAllArticlesWalker {
         report {"articles": article_nodes};
     }
 }
+walker ClearAllArticlesWalker {
+    can clear with `root entry {
+        print("\n🗑️  Clearing all articles from database...");
+        
+        all_nodes = [-->];
+        
+        # Count what we're deleting
+        article_count = 0;
+        topic_count = 0;
+        source_count = 0;
+        
+        # Delete all articles, topics, and sources
+        for node in all_nodes {
+            if isinstance(node, Article) {
+                del node;
+                article_count += 1;
+            } elif isinstance(node, Topic) {
+                del node;
+                topic_count += 1;
+            } elif isinstance(node, Source) {
+                del node;
+                source_count += 1;
+            }
+        }
+        
+        print(f"✅ Deleted: {article_count} articles, {topic_count} topics, {source_count} sources");
+        
+        report {
+            "deleted_articles": article_count,
+            "deleted_topics": topic_count,
+            "deleted_sources": source_count,
+            "message": "Database cleared successfully"
+        };
+    }
+}
 # ============ ENTRY POINT ============
+with entry {
+    print("Starting News Curator backend...");
 
-
-with entry {   
-    print("\n" + "="*60);
-    print("   NEWS CURATOR & MISINFORMATION DETECTOR");
-    print("="*60);
-    print(f"\nPrimary LLM: Google Gemini (gemini-2.0-flash-exp)");
-    print(f"Fallback LLM: Groq (llama-3.1-70b-versatile)");
-    print(f"News Sources: NewsAPI, GNews, RSS Feeds");
-    print("\n" + "="*60 + "\n");
-    
-    print("Checking LLM connection...");
-    print("LLM will be tested lazily on first invocation.\n");
-    
-    print("Initializing system...\n");
-    
     user = UserProfile(
         user_id="user_001",
         interests=["technology", "artificial intelligence", "climate change"]
     );
     root ++> user;
-    print(f"User profile created");
-    print(f"  Interests: {', '.join(user.interests)}");
-    
-    print(f"System initialized\n");
-    
-    print("="*60);
-    for interest in user.interests[:2] {
-        fetcher = FetchNewsWalker(topic=interest, max_articles=10);
-        root spawn fetcher;
-    }
-    
-    print("="*60);
-    print("\nSystem ready! You can now:");
-    print("   1. Analyze articles with AnalyzeCredibilityWalker");
-    print("   2. Get recommendations with RecommendArticlesWalker");
-    print("   3. Cross-check claims with CrossCheckClaimsWalker");
-    print("\n" + "="*60 + "\n");
+
+    print("Backend ready");
 }
+

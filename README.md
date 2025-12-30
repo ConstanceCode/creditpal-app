@@ -1,7 +1,7 @@
 
 # CreditPal App 
 
-CreditPal is an intelligent, graph-powered credit and news analysis platform built using **Jaclang (Jaseci)** and a modern **Node.js + Vite + React** frontend stack. The project is designed as a learning-through-building system that combines graph programming, agents, and application logic to explore personalized information systems.
+CreditPal is an intelligent, graph-powered credit and news analysis platform built using **Jaclang (Jaseci)** and Streamlit frontend stack. The project is designed as a learning-through-building system that combines graph programming, agents, and application logic to explore personalized information systems.
 
 ---
 
@@ -20,19 +20,19 @@ This project is both a **practical application** and a **learning project** focu
 ##  Tech Stack
 
 ### Backend
+- Jaclang (Jaseci)
+- Jaseci Runtime
+- Walkers, nodes, and semantic abilities
+- Python-based semantic execution
 
-* **Jaclang (Jaseci)** – graph programming language
-* **Jaseci Runtime** – execution engine
-* Walkers, nodes, edges, and abilities
 
 ### Frontend
 
-* **Node.js**
-* **Vite**
-* **React**
+- Streamlit **(official UI)**
 
 ### Tooling
 
+* Python 3.10+
 * Git & GitHub (SSH-based auth)
 * Python virtual environment (`.venv`)
 * VS Code
@@ -41,75 +41,58 @@ This project is both a **practical application** and a **learning project** focu
 
 ## Project Structure
 
-
-creditpal-app/
-├── .gitignore
-├── .babelrc
+creditpal/
 ├── README.md
+│
+├── app.jac                    # Core Jac app (walkers + API)
+├── app.impl.jac               # Semantic implementations
+├── app.session                # Runtime session state
+├── app.session.users.json     # Session user storage
+│
+├── tools/
+│   ├── news_fetchers.jac      # News fetching walkers
+│   └── news_fetchers_py.py    # Python helpers (API calls)
+│
+├── ui.py                      # Streamlit frontend (MAIN UI)
+│
+├── src/                       # Legacy frontend (not active)
+│   ├── app.js
+│   ├── main.js
+│   └── client_runtime.js
+│
+├── build/                     # Legacy build artifacts
+├── dist/                      # Legacy build output
+│
+├── assets/                    # Images / static assets
+│
 ├── package.json
 ├── package-lock.json
 ├── vite.config.js
-├── .env.sample
 │
-├── app.jac                 # Main Jac application
-├── app.cl.jac              # Application logic
-├── news.app.jac            # News / content logic
-├── todo.app.jac            # Example feature app
-├── utils.jac               # Shared helpers
-├── main2.jac               # Experiments / entry points
-│
-├── src/                    # Frontend source
-│   ├── main.js
-│   ├── app.js
-│   └── client_runtime.js
-│
-├── build/                  # Build artifacts
-├── dist/                   # Frontend output
-└── .venv/                  # Python virtual environment (ignored)
+└── node_modules/              # Ignored in Git
 ```
-
----
 
 ##  Setup Instructions
 
 ### Clone the Repository
 
-```bash
+```
 git clone git@github.com:ConstanceCode/creditpal-app.git
 cd creditpal-app
 ```
 
-### Backend Setup (Jaclang)
+## Backend Setup (Jaclang)
 
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install jaseci jaseci-serv
+pip install jaseci jaseci-serv streamlit requests
 ```
 
-## Running Jac Code
-
-make sure node modules are installed:
-```bash
-npm install
-```
-
-To run your Jac code, use the Jac CLI:
-
-```bash
+## Running Jac backend
 jac serve app.jac
-```
 
----
-
-### Frontend Setup
-
-```bash
-npm install
-npm run dev
-```
-
----
+### Running Streamlit Frontend
+Streamlit run ui.py
 
 ## Key Concepts Used
 
@@ -127,13 +110,12 @@ npm run dev
 
 Planned improvements:
 
-* Credibility scoring logic
-* Personalization rules
-* Graph visualization
-* Better frontend integration
-* Documentation & tests
-
----
+* Better article normalization
+* Topic-based filtering on backend
+* User relevance scoring
+* Caching & rate limiting
+* Test coverage
+* Documentation for walkers
 
 ## Contributing
 
